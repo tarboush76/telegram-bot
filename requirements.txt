@@ -1,3 +1,2 @@
 pyTelegramBotAPI
-pandas
-openpyxl
+flask
