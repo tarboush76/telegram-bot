@@ -1,14 +1,17 @@
+
 import logging
 import pandas as pd
 from telegram.ext import Updater, MessageHandler, Filters
 
 # ---------- إعداد ملف الإكسل ----------
-df = pd.read_excel("results.xlsx")
+
+df = pd.read_excel("results.xlsx", header=0)  # إذا الصف الأول فعلاً عناوين
+df.columns = df.columns.str.strip()
 df["Number"] = df["Number"].astype(str).str.strip()
 
 # ---------- التوكن ----------
-
 TOKEN = "429620974:AAEXymUdVhTYSYiWJ_lMhAULtitVypoQrq8"
+
 # ---------- لوج للتصحيح ----------
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
                     level=logging.INFO)
@@ -18,13 +21,12 @@ def get_result(roll_number):
     roll_number = str(roll_number).strip()
     result = df[df["Number"] == roll_number]
     if not result.empty:
-        row = result.iloc[0]  # أول صف مطابق
+        row = result.iloc[0]
         output_lines = []
-        for col in result.columns:
-            if col == "Number":
+        for col in df.columns:     # ← نمر على كل الأعمدة بعد التنظيف
+            if col == "Number":    # ← تجاهل رقم الجلوس
                 continue
             value = row[col]
-            # لو العمود رقمي نحط ✅/❌
             if isinstance(value, (int, float)):
                 status = "✅" if value >= 50 else "❌"
                 output_lines.append(f"{col}: {value} {status}")
