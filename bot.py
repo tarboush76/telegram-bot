@@ -1,9 +1,8 @@
 import os
 from flask import Flask, request
 import telebot
+TOKEN = "7216256882:AAEDFACNn9HT8VzLWuhKPsfxnbEteiqoe64"
 
-TOKEN = os.environ.get("TOKEN")  # التوكن موجود في Variables داخل Railway
-bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
 
