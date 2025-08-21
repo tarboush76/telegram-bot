@@ -1,26 +1,29 @@
-import telebot
-import pandas as pd
+import os
+from flask import Flask
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import threading
 
-# ضع التوكن هنا مباشرة
-TOKEN = "429620974:AAEXymUdVhTYSYiWJ_lMhAULtitVypoQrq8
-    if df is None:
-        return "❌ الرقم غير صحيح أو لا يطابق أي عام"
+TOKEN = os.getenv("BOT_TOKEN")
 
-    try:
-        result = df[df["id"] == int(student_id)]
-        if result.empty:
-            return "❌ لا توجد نتيجة لهذا الرقم"
-        else:
-            return result.to_string(index=False)
-    except Exception as e:
-        return f"⚠️ خطأ أثناء البحث: {e}"
+app = Flask(__name__)
 
-# استقبال رسائل الطلاب
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    student_id = message.text.strip()
-    reply = search_result(student_id)
-    bot.reply_to(message, reply)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("مرحباً 👋، البوت شغال ✅")
 
-print("✅ البوت شغال الآن ...")
-bot.polling()
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"إنت قلت: {update.message.text}")
+
+def run_bot():
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    application.run_polling()
+
+@app.route("/")
+def home():
+    return "البوت شغال ✅"
+
+if __name__ == "__main__":
+    threading.Thread(target=run_bot).start()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
