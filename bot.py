@@ -1,41 +1,39 @@
-import pandas as pd
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+import os
+from flask import Flask, request
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
 
-# ضع التوكن الجديد هنا 👇
-TOKEN = "429620974:AAEXymUdVhTYSYiWJ_lMhAULtitVypoQrq8"
+# توكن البوت
+TOKEN = os.getenv("BOT_TOKEN")
+bot = Bot(token=TOKEN)
 
-# تحميل ملف الدرجات (تأكد أن اسم الملف مطابق الموجود بجانب bot.py)
-grades = pd.read_excel("results.xlsx")
+# إعداد Flask
+app = Flask(__name__)
 
+# دالة بدء
 def start(update, context):
-    update.message.reply_text("مرحباً 👋\nأرسل رقم جلوسك للحصول على نتيجتك.")
+    update.message.reply_text("مرحباً 👋، البوت شغال بالويب هوك!")
 
-def get_result(update, context):
-    try:
-        seat_number = int(update.message.text.strip())
-        row = grades.loc[grades["رقم_الجلوس"] == seat_number]
+# إنشاء Dispatcher
+from telegram.ext import CallbackContext
+dispatcher = Dispatcher(bot, None, workers=0)
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, 
+                                      lambda u, c: u.message.reply_text("أهلاً بك!")))
 
-        if not row.empty:
-            name = row.iloc[0]["الاسم"]
-            total = row.iloc[0]["المجموع"]
-            msg = f"📌 الاسم: {name}\n📊 المجموع: {total}"
-        else:
-            msg = "❌ رقم الجلوس غير موجود"
+# راوت خاص بـ Webhook
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return "ok"
 
-        update.message.reply_text(msg)
-    except Exception as e:
-        update.message.reply_text("⚠️ حدث خطأ، تأكد أنك أدخلت رقم جلوس صحيح.")
-
-def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
-
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, get_result))
-
-    updater.start_polling()
-    print("✅ البوت يعمل الآن...")
-    updater.idle()
+# الصفحة الرئيسية
+@app.route("/")
+def home():
+    return "بوتك شغال ✅"
 
 if __name__ == "__main__":
-    main()
+    # رابط الويب هوك (Render بيستخدم PORT من البيئة)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
