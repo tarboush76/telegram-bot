@@ -1,42 +1,63 @@
-import os
+import logging
 import pandas as pd
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# قراءة التوكن من Render Environment Variables
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# 🔹 ضع التوكن الخاص بك هنا
+TOKEN = "PUT-YOUR-BOT-TOKEN-HERE"
 
-# تحميل ملف النتائج
-EXCEL_FILE = "results.xlsx"
-df = pd.read_excel(EXCEL_FILE)
+# تفعيل اللوجات
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
-# دالة البداية
+# قراءة ملف النتائج
+df = pd.read_excel("results.xlsx")
+
+# دالة البدء
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("مرحباً 👋! أرسل رقم الجلوس للحصول على النتيجة.")
+    await update.message.reply_text("👋 أهلاً بك!\nأرسل رقم الجلوس أو اسم الطالب للحصول على النتيجة.")
 
-# دالة البحث عن النتيجة
-async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# دالة البحث
+async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.message.text.strip()
 
-    if query.isdigit():  # تأكد أنه رقم
-        student = df[df['رقم_الجلوس'] == int(query)]
-
-        if not student.empty:
-            name = student.iloc[0]['الاسم']
-            grade = student.iloc[0]['الدرجة']
-            await update.message.reply_text(f"الاسم: {name}\nالدرجة: {grade}")
-        else:
-            await update.message.reply_text("❌ لم يتم العثور على هذا الرقم.")
+    # البحث بالرقم
+    if query.isdigit():
+        result = df[df["Number"].astype(str) == query]
     else:
-        await update.message.reply_text("📌 رجاءً أدخل رقم الجلوس فقط.")
+        result = df[df["الاسم"].str.contains(query, case=False, na=False)]
 
-# تشغيل البوت
+    if not result.empty:
+        for _, row in result.iterrows():
+            reply = (
+                f"📌 الاسم: {row['الاسم']}\n"
+                f"🏫 المدرسة: {row['اسم المدرسة']}\n"
+                f"📍 المديرية: {row['المديرية']}\n"
+                f"🔢 رقم الجلوس: {row['Number']}\n\n"
+                f"📖 القرآن: {row['القران']}\n"
+                f"🕌 الإسلامية: {row['الاسلاميه']}\n"
+                f"📝 العربي: {row['العربي']}\n"
+                f"🌍 الاجتماعيات: {row['الاجتماعيات']}\n"
+                f"🧮 الرياضيات: {row['الرياضيات']}\n"
+                f"🔬 العلوم: {row['العلوم']}\n"
+                f"💻 الإنجليزي: {row['الانجليزي']}\n\n"
+                f"✅ المجموع: {row['المجموع']}\n"
+                f"📊 المعدل: {row['المعدل']}\n"
+                f"🎯 النتيجة: {row['النتيجة']}"
+            )
+            await update.message.reply_text(reply)
+    else:
+        await update.message.reply_text("❌ لم يتم العثور على الطالب. تأكد من كتابة الاسم أو الرقم بشكل صحيح.")
+
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("result", result))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
 
+    print("✅ البوت شغال...")
     app.run_polling()
 
 if __name__ == "__main__":
