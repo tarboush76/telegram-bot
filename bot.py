@@ -4,7 +4,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # 🔹 ضع التوكن الخاص بك هنا
-TOKEN = "PUT-YOUR-BOT-TOKEN-HERE"
+TOKEN = "8272963553:AAG8NBvyvhW5kqvRRh3XVpX8djoWPKd0uiA"
 
 # تفعيل اللوجات
 logging.basicConfig(
