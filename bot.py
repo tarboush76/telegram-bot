@@ -1,39 +1,58 @@
 import os
+import logging
 from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
+import requests
+import pandas as pd
 
-# توكن البوت
-TOKEN = os.getenv("BOT_TOKEN")
-bot = Bot(token=TOKEN)
+# إعداد اللوجات
+logging.basicConfig(level=logging.INFO)
+
+# جلب التوكن من Environment Variables
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("❌ لازم تضيف BOT_TOKEN في Environment Variables داخل Render")
+
+# رابط API
+TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # إعداد Flask
 app = Flask(__name__)
 
-# دالة بدء
-def start(update, context):
-    update.message.reply_text("مرحباً 👋، البوت شغال بالويب هوك!")
-
-# إنشاء Dispatcher
-from telegram.ext import CallbackContext
-dispatcher = Dispatcher(bot, None, workers=0)
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, 
-                                      lambda u, c: u.message.reply_text("أهلاً بك!")))
-
-# راوت خاص بـ Webhook
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
-    return "ok"
+# تحميل ملف الاكسل
+EXCEL_FILE = "grades.xlsx"   # لازم ترفعه مع الملفات
+df = pd.read_excel(EXCEL_FILE)
 
 # الصفحة الرئيسية
 @app.route("/")
 def home():
-    return "بوتك شغال ✅"
+    return "✅ البوت شغال على Render!"
+
+# استقبال رسائل تيليجرام
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    data = request.get_json()
+
+    if "message" in data:
+        chat_id = data["message"]["chat"]["id"]
+        text = data["message"].get("text", "").strip()
+
+        # البحث في ملف الدرجات
+        result = df[df['name'].str.contains(text, case=False, na=False)]
+
+        if not result.empty:
+            # نعرض أول صف مطابق
+            student = result.iloc[0]
+            reply = f"📊 النتيجة:\n\n👤 الاسم: {student['name']}\n📌 الدرجة: {student['grade']}"
+        else:
+            reply = "⚠️ لم أجد أي طالب بهذا الاسم."
+
+        # إرسال الرد
+        requests.post(f"{TELEGRAM_API}/sendMessage", json={
+            "chat_id": chat_id,
+            "text": reply
+        })
+
+    return {"ok": True}
 
 if __name__ == "__main__":
-    # رابط الويب هوك (Render بيستخدم PORT من البيئة)
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=5000)
