@@ -1,58 +1,43 @@
 import os
-import logging
-from flask import Flask, request
-import requests
 import pandas as pd
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# إعداد اللوجات
-logging.basicConfig(level=logging.INFO)
+# قراءة التوكن من Render Environment Variables
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# جلب التوكن من Environment Variables
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise ValueError("❌ لازم تضيف BOT_TOKEN في Environment Variables داخل Render")
-
-# رابط API
-TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
-
-# إعداد Flask
-app = Flask(__name__)
-
-# تحميل ملف الاكسل
-EXCEL_FILE = "grades.xlsx"   # لازم ترفعه مع الملفات
+# تحميل ملف النتائج
+EXCEL_FILE = "results.xlsx"
 df = pd.read_excel(EXCEL_FILE)
 
-# الصفحة الرئيسية
-@app.route("/")
-def home():
-    return "✅ البوت شغال على Render!"
+# دالة البداية
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("مرحباً 👋! أرسل رقم الجلوس للحصول على النتيجة.")
 
-# استقبال رسائل تيليجرام
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    data = request.get_json()
+# دالة البحث عن النتيجة
+async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.message.text.strip()
 
-    if "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"].get("text", "").strip()
+    if query.isdigit():  # تأكد أنه رقم
+        student = df[df['رقم_الجلوس'] == int(query)]
 
-        # البحث في ملف الدرجات
-        result = df[df['name'].str.contains(text, case=False, na=False)]
-
-        if not result.empty:
-            # نعرض أول صف مطابق
-            student = result.iloc[0]
-            reply = f"📊 النتيجة:\n\n👤 الاسم: {student['name']}\n📌 الدرجة: {student['grade']}"
+        if not student.empty:
+            name = student.iloc[0]['الاسم']
+            grade = student.iloc[0]['الدرجة']
+            await update.message.reply_text(f"الاسم: {name}\nالدرجة: {grade}")
         else:
-            reply = "⚠️ لم أجد أي طالب بهذا الاسم."
+            await update.message.reply_text("❌ لم يتم العثور على هذا الرقم.")
+    else:
+        await update.message.reply_text("📌 رجاءً أدخل رقم الجلوس فقط.")
 
-        # إرسال الرد
-        requests.post(f"{TELEGRAM_API}/sendMessage", json={
-            "chat_id": chat_id,
-            "text": reply
-        })
+# تشغيل البوت
+def main():
+    app = Application.builder().token(BOT_TOKEN).build()
 
-    return {"ok": True}
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("result", result))
+
+    app.run_polling()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    main()
