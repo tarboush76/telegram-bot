@@ -1,0 +1,21 @@
+modules = ["python-3.12"]
+run = "pip install -r requirements.txt"
+
+[nix]
+channel = "stable-25_05"
+packages = ["glibcLocales"]
+
+[deployment]
+run = ["sh", "-c", "pip install -r requirements.txt"]
+
+[workflows]
+runButton = "Start Telegram Bot"
+
+[[workflows.workflow]]
+name = "Start Telegram Bot"
+author = 46878067
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python main.py"
