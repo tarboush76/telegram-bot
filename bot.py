@@ -9,9 +9,9 @@ TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
 # تحميل الملفات (تأكد أنها مرفوعة مع الكود في Render)
-data_2023 = pd.read_excel("2023.xlsx")
-data_2024 = pd.read_excel("2024.xlsx")
-data_2025 = pd.read_excel("2025.xlsx")
+data_2023 = pd.read_excel("results_2023.xlsx")
+data_2024 = pd.read_excel("results_2024.xlsx")
+data_2025 = pd.read_excel("results_2025.xlsx")
 
 # توحيد الأعمدة (لو كان فيها مسافات أو اختلافات)
 for df in [data_2023, data_2024, data_2025]:
@@ -21,11 +21,11 @@ for df in [data_2023, data_2024, data_2025]:
 # تحديد السنة من رقم الجلوس (أول رقم يحدد السنة)
 def get_year_from_id(student_id: str):
     if student_id.startswith("3"):
-        return 2023, data_2023
-    elif student_id.startswith("4"):
-        return 2024, data_2024
+        return results_2023, data_2023
+    elif student_id.startswith("8"):
+        return results_2024, data_2024
     elif student_id.startswith("5"):
-        return 2025, data_2025
+        return results_2025, data_2025
     else:
         return None, None
 
