@@ -1,0 +1,16 @@
+from flask import Flask
+import threading
+from bot import run_bot   # استدعاء الدالة من كود البوت
+
+app = Flask(name)
+
+@app.route('/')
+def home():
+    return "Bot is running on Render!", 200
+
+if name == "main":
+    # تشغيل البوت في Thread منفصل
+    t = threading.Thread(target=run_bot)
+    t.start()
+    # تشغيل Flask على البورت المطلوب
+    app.run(host="0.0.0.0", port=10000)
