@@ -1,6 +1,7 @@
-python-telegram-bot==20.3
+python-telegram-bot==13.15
 pandas
 openpyxl
 Flask
 pytelegrambotapi
 telegram
+
