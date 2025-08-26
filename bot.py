@@ -1,235 +1,135 @@
 import os
-import telebot
-from flask import Flask
-import threading
 import logging
 import pandas as pd
-from typing import Optional
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# ============ إعداد اللوج ============
+# إعداد اللوج
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 log = logging.getLogger("results-bot")
 
-# ============ قراءة التوكن ============
+# قراءة التوكن من Secrets
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
-    raise RuntimeError("❌ BOT_TOKEN غير موجود. أضِفه في Secrets")
+    raise RuntimeError("❌ BOT_TOKEN غير موجود. أضِفه في Secrets على Render")
 
-# ============ تحميل ملفات الإكسل ============
+# تحميل ملفات الإكسل
 EXCEL_FILES = {
     "2023": "results_2023.xlsx",
-    "2024": "results_2024.xlsx", 
+    "2024": "results_2024.xlsx",
     "2025": "results_2025.xlsx"
 }
 
-# التحقق من وجود الملفات وتحميلها
 dataframes = {}
 for year, filename in EXCEL_FILES.items():
     try:
         if os.path.exists(filename):
             dataframes[year] = pd.read_excel(filename)
-            log.info(f"تم تحميل ملف {year}: {filename} ({len(dataframes[year])} صف)")
+            log.info(f"✅ تم تحميل ملف {year}: {filename} ({len(dataframes[year])} صف)")
         else:
-            log.warning(f"الملف {filename} غير موجود")
+            log.warning(f"⚠️ الملف {filename} غير موجود")
     except Exception as e:
-        log.error(f"خطأ في تحميل ملف {filename}: {e}")
+        log.error(f"❌ خطأ في تحميل ملف {filename}: {e}")
 
 if not dataframes:
     raise RuntimeError("❌ لم يتم العثور على أي ملف نتائج")
 
-log.info(f"تم تحميل {len(dataframes)} ملف نتائج")
-
+# تحديد السنة من أول رقم
 def get_year_from_number(number: str) -> str:
-    """تحديد السنة من أول رقم في رقم الجلوس"""
-    first_digit = number[0] if number else ""
-    if first_digit == "5":
+    if number.startswith("5"):
         return "2025"
-    elif first_digit == "8":
+    elif number.startswith("4"):
         return "2024"
-    elif first_digit == "3":
+    elif number.startswith("3"):
         return "2023"
-    else:
-        return None
-
-def find_col(df, candidates):
-    """البحث عن عمود من قائمة مرشحين"""
-    for col in df.columns:
-        for candidate in candidates:
-            if candidate.lower() in col.lower():
-                return col
     return None
 
+# البحث في الأعمدة
 def get_columns_for_df(df):
-    """الحصول على أعمدة الرقم والاسم لملف معين"""
-    NUMBER_COL_CANDIDATES = ["Number", "number", "رقم_الجلوس", "رقم", "roll", "seat", "id", "ID"]
-    NAME_COL_CANDIDATES   = ["الاسم", "اسم", "name", "Name", "الطالب"]
-    
-    number_col = find_col(df, NUMBER_COL_CANDIDATES)
-    name_col = find_col(df, NAME_COL_CANDIDATES)
-    
+    number_candidates = ["id", "ID", "رقم", "رقم_الجلوس", "seat", "roll"]
+    name_candidates = ["name", "Name", "الاسم", "اسم", "الطالب"]
+
+    number_col = None
+    name_col = None
+
+    for col in df.columns:
+        if any(c.lower() in col.lower() for c in number_candidates):
+            number_col = col
+        if any(c.lower() in col.lower() for c in name_candidates):
+            name_col = col
+
     if not number_col:
         number_col = df.columns[0]
-    
     if not name_col:
-        for col in df.columns[1:]:
-            if df[col].dtype == 'object':
-                name_col = col
-                break
-        if not name_col:
-            name_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]
-    
+        name_col = df.columns[1]
+
     return number_col, name_col
 
-# تنظيف أرقام الجلوس في جميع الملفات
-for year, df in dataframes.items():
-    number_col, _ = get_columns_for_df(df)
-    df[number_col] = df[number_col].astype(str).str.strip()
-    dataframes[year] = df
-
-def normalize_digits(s: str) -> str:
-    """تحويل الأرقام العربية/الهندية إلى 0-9 الإنجليزية"""
-    if not isinstance(s, str):
-        return s
-    trans = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
-    return s.translate(trans).strip()
-
-def format_row(row: pd.Series, df, year: str) -> str:
-    """تنسيق صف النتيجة مع معلومات السنة"""
+# تنسيق النتيجة
+def format_row(row, df, year: str):
     number_col, name_col = get_columns_for_df(df)
-    
-    parts = []
-    parts.append(f"📅 السنة: {year}")
-    parts.append(f"👤 الاسم: {row.get(name_col, '-')}")
-    parts.append(f"🔢 رقم الجلوس: {row.get(number_col, '-')}")
-    
-    # عرض باقي الأعمدة (ماعدا الاسم والرقم)
+    parts = [
+        f"📅 السنة: {year}",
+        f"👤 الاسم: {row.get(name_col, '-')}",
+        f"🔢 رقم الجلوس: {row.get(number_col, '-')}"
+    ]
+
     for col in df.columns:
         if col not in [name_col, number_col]:
             val = row.get(col, "-")
-            if pd.isna(val):
-                val = "-"
-            # علامة نجاح/رسوب للمواد الرقمية
-            if isinstance(val, (int, float)) and not pd.isna(val):
-                if val >= 50:
-                    status = "✅"
-                else:
-                    status = "❌"
-                parts.append(f"{col}: {val} {status}")
-            else:
-                parts.append(f"{col}: {val}")
-    
+            parts.append(f"{col}: {val}")
+
     return "\n".join(parts)
 
-# ============ الأوامر والرسائل ============
+# أمر /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    files_info = []
-    total_count = 0
-    for year, df in dataframes.items():
-        files_info.append(f"• {year}: {len(df)} نتيجة")
-        total_count += len(df)
-    
     msg = (
         "👋 أهلاً بك في بوت النتائج!\n\n"
-        "📊 تصميم خالد طربوش:\n" + "\n".join(files_info) + f"\n"
-        f"📈 إجمالي النتائج: {total_count}\n\n"
-        "🔍 كيفية البحث:\n"
-        "• الأرقام التي تبدأ بـ 5 → نتائج 2025\n"
-        "• الأرقام التي تبدأ بـ 8 → نتائج 2024\n"
-        "• الأرقام التي تبدأ بـ 3 → نتائج 2023\n"
-        "• أو أرسل الاسم للبحث في جميع الملفات\n\n"
+        "🔍 أرسل رقم الجلوس فقط وسيظهر لك نتيجتك:\n"
+        "• يبدأ بـ 5 → نتائج 2025\n"
+        "• يبدأ بـ 4 → نتائج 2024\n"
+        "• يبدأ بـ 3 → نتائج 2023\n\n"
         "مثال:\n"
-        "512345 (ستظهر نتيجة الطالب للعام 2025)\n"
-        " ( للثلاث الاعوام)"
+        "`590678` (نتيجة 2025)\n"
+        "`456890` (نتيجة 2024)\n"
+        "`312345` (نتيجة 2023)\n"
     )
     await update.message.reply_text(msg)
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        text = (update.message.text or "").strip()
-        if not text:
-            await update.message.reply_text("أرسل رقم الجلوس أو الاسم.")
-            return
+# البحث عن نتيجة
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = (update.message.text or "").strip()
+    if not q.isdigit():
+        await update.message.reply_text("❌ أرسل رقم جلوس صحيح.")
+        return
 
-        log.info(f"البحث عن: {text}")
-        q = normalize_digits(text)
+    year = get_year_from_number(q)
+    if not year or year not in dataframes:
+        await update.message.reply_text("❌ رقم الجلوس لا يطابق أي عام (3,4,5)")
+        return
 
-        # لو كله أرقام → بحث دقيق برقم الجلوس
-        if q.isdigit():
-            year = get_year_from_number(q)
-            if not year or year not in dataframes:
-                await update.message.reply_text(f"❌ رقم الجلوس {q} لا يتبع لأي من الأعوام المتاحة (يجب أن يبدأ بـ 3 أو 8 أو 5)")
-                return
-            
-            df = dataframes[year]
-            number_col, _ = get_columns_for_df(df)
-            
-            result = df[df[number_col].astype(str).str.strip() == q]
-            if result.empty:
-                await update.message.reply_text(f"❌ لم أجد رقم الجلوس: {q} في ملف {year}")
-                return
-            
-            row = result.iloc[0]
-            response = format_row(row, df, year)
-            await update.message.reply_text(response)
-            log.info(f"تم العثور على النتيجة للرقم: {q} في ملف {year}")
-            return
+    df = dataframes[year]
+    number_col, _ = get_columns_for_df(df)
+    result = df[df[number_col].astype(str).str.strip() == q]
 
-        # غير ذلك → بحث جزئي بالاسم في جميع الملفات
-        all_results = []
-        for year, df in dataframes.items():
-            try:
-                _, name_col = get_columns_for_df(df)
-                mask = df[name_col].astype(str).str.contains(q, case=False, na=False)
-                result = df[mask]
-                
-                if not result.empty:
-                    for _, row in result.iterrows():
-                        all_results.append((row, df, year))
-                        
-            except Exception as e:
-                log.error(f"خطأ في البحث في ملف {year}: {e}")
-                continue
+    if result.empty:
+        await update.message.reply_text(f"❌ لا توجد نتيجة لرقم {q} في عام {year}")
+        return
 
-        if not all_results:
-            await update.message.reply_text(f"❌ لم أجد اسماً يحتوي على: {q}")
-            return
+    row = result.iloc[0]
+    response = format_row(row, df, year)
+    await update.message.reply_text(response)
 
-        # لو النتائج كثيرة، نرسل أول 3 فقط
-        MAX_ROWS = 3
-        count = len(all_results)
-        if count > MAX_ROWS:
-            await update.message.reply_text(f"🔎 وُجد {count} نتيجة، سأعرض أول {MAX_ROWS}:")
-            all_results = all_results[:MAX_ROWS]
-
-        for row, df, year in all_results:
-            response = format_row(row, df, year)
-            await update.message.reply_text(response)
-        
-        log.info(f"تم العثور على {len(all_results)} نتائج للاسم: {q}")
-
-    except Exception as e:
-        log.error(f"خطأ في معالجة الرسالة: {e}")
-        await update.message.reply_text("⚠️ حدث خطأ أثناء البحث. حاول مرة أخرى.")
-
+# تشغيل البوت
 def main():
-    try:
-        log.info("🚀 بدء تشغيل البوت...")
-        app = Application.builder().token(TOKEN).build()
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-        log.info("✅ البوت جاهز وسيبدأ بوضع Polling")
-        app.run_polling(allowed_updates=Update.ALL_TYPES)
-        
-    except Exception as e:
-        log.error(f"خطأ في تشغيل البوت: {e}")
-        raise
+    log.info("🚀 بدء تشغيل البوت...")
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
-
