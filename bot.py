@@ -1,106 +1,45 @@
 import os
-import logging
+import telebot
 import pandas as pd
-from flask import Flask, request
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# ============ إعداد اللوج ============
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("results-bot")
-
-# ============ التوكن ============
+# استدعاء التوكن من المتغير البيئي (آمن أكثر من كتابته مباشر)
 TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    raise RuntimeError("❌ BOT_TOKEN غير موجود. أضِفه في Secrets")
 
-# ============ رابط Webhook ============
-WEBHOOK_URL = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook/{TOKEN}"
+bot = telebot.TeleBot(TOKEN)
 
-# ============ تحميل ملفات الإكسل ============
-EXCEL_FILES = {
-    "2023": "results_2023.xlsx",
-    "2024": "results_2024.xlsx",
-    "2025": "results_2025.xlsx"
-}
+# تحميل ملفات النتائج (تأكد أنها مرفوعة مع المشروع)
+data_2023 = pd.read_excel("2023.xlsx")
+data_2024 = pd.read_excel("2024.xlsx")
+data_2025 = pd.read_excel("2025.xlsx")
 
-dataframes = {}
-for year, filename in EXCEL_FILES.items():
-    try:
-        if os.path.exists(filename):
-            df = pd.read_excel(filename)
-            dataframes[year] = df
-            log.info(f"✅ تم تحميل ملف {year}: {filename} ({len(df)} صف)")
-        else:
-            log.warning(f"⚠️ الملف {filename} غير موجود")
-    except Exception as e:
-        log.error(f"❌ خطأ في تحميل ملف {filename}: {e}")
-
-if not dataframes:
-    raise RuntimeError("❌ لم يتم العثور على أي ملف نتائج")
-
-# ============ دوال البحث ============
-def get_year_from_number(number: str) -> str:
-    if number.startswith("5"):
-        return "2025"
-    elif number.startswith("8"):
-        return "2024"
-    elif number.startswith("3"):
-        return "2023"
-    return None
-
-def search_by_number(q: str):
-    year = get_year_from_number(q)
-    if not year or year not in dataframes:
-        return f"❌ رقم الجلوس {q} غير مرتبط بأي ملف"
-    df = dataframes[year]
-    result = df[df[df.columns[0]].astype(str).str.strip() == q]
-    if result.empty:
-        return f"❌ لم أجد رقم الجلوس {q} في نتائج {year}"
-    return result.to_string(index=False)
-
-def search_by_name(q: str):
-    results = []
-    for year, df in dataframes.items():
-        mask = df[df.columns[1]].astype(str).str.contains(q, case=False, na=False)
-        matches = df[mask]
-        if not matches.empty:
-            results.append(f"📅 {year}\n" + matches.to_string(index=False))
-    return "\n\n".join(results) if results else f"❌ لم أجد اسم يحتوي على: {q}"
-
-# ============ أوامر البوت ============
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 أهلاً بك! أرسل رقم الجلوس أو الاسم للبحث.")
-
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (update.message.text or "").strip()
-    if text.isdigit():
-        reply = search_by_number(text)
+# دالة البحث
+def search_result(student_id: str):
+    # نحدد الملف حسب أول رقم
+    if student_id.startswith("3"):
+        df = data_2023
+    elif student_id.startswith("8"):
+        df = data_2024
+    elif student_id.startswith("5"):
+        df = data_2025
     else:
-        reply = search_by_name(text)
-    await update.message.reply_text(reply)
+        return "❌ الرقم غير صحيح أو غير تابع للأعوام المتاحة"
 
-# ============ إعداد Telegram + Flask ============
-telegram_app = Application.builder().token(TOKEN).build()
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    try:
+        result = df[df["id"] == int(student_id)]
+    except Exception:
+        return "⚠️ خطأ: تأكد أن العمود في ملف الاكسل اسمه (id)"
+    
+    if result.empty:
+        return "❌ لا توجد نتيجة لهذا الرقم"
+    else:
+        return result.to_string(index=False)
 
-app = Flask(__name__)
+# استقبال الرسائل
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    student_id = message.text.strip()
+    reply = search_result(student_id)
+    bot.reply_to(message, reply)
 
-@app.route(f"/webhook/{TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-    telegram_app.update_queue.put_nowait(update)
-    return "ok"
-
-@app.route("/")
-def index():
-    return "🤖 البوت شغال"
-
-if __name__ == "__main__":
-    import asyncio
-    async def set_webhook():
-        await telegram_app.bot.set_webhook(WEBHOOK_URL)
-        log.info(f"✅ Webhook set: {WEBHOOK_URL}")
-    asyncio.run(set_webhook())
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+print("✅ البوت شغال الآن ...")
+bot.polling(none_stop=True)
