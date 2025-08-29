@@ -18,8 +18,13 @@ TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise RuntimeError("❌ BOT_TOKEN غير موجود. أضِفه في Secrets")
 
+# ============ تتبع المستخدمين ============
+user_ids = set()  # مجموعة لحفظ معرفات المستخدمين الفريدة
+
 # ============ تحميل ملفات الإكسل ============
 EXCEL_FILES = {
+    "2021": "results_2021.xlsx",
+    "2022": "results_2022.xlsx",
     "2023": "results_2023.xlsx",
     "2024": "results_2024.xlsx", 
     "2025": "results_2025.xlsx"
@@ -51,6 +56,10 @@ def get_year_from_number(number: str) -> str:
         return "2024"
     elif first_digit == "3":
         return "2023"
+    elif first_digit == "2":
+        return "2022"
+    elif first_digit == "4":
+        return "2021"
     else:
         return None
 
@@ -125,6 +134,10 @@ def format_row(row: pd.Series, df, year: str) -> str:
 
 # ============ الأوامر والرسائل ============
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # إضافة المستخدم إلى قاعدة البيانات
+    user_id = update.effective_user.id
+    user_ids.add(user_id)
+    
     files_info = []
     total_count = 0
     for year, df in dataframes.items():
@@ -134,20 +147,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         "👋 أهلاً بك في بوت النتائج!\n\n"
         "📊 اتصميم خالد طربوش:\n" + "\n".join(files_info) + f"\n"
-        f"📈 تصميم خالد طربوش: {total_count}\n\n"
+        f"📈 : {total_count}\n\n"
         "🔍 كيفية البحث:\n"
         "• الأرقام التي تبدأ بـ 5 → نتائج 2025\n"
         "• الأرقام التي تبدأ بـ 8 → نتائج 2024\n"
         "• الأرقام التي تبدأ بـ 3 → نتائج 2023\n"
+        "• الأرقام التي تبدأ بـ 2 → نتائج 2022\n"
+        "• الأرقام التي تبدأ بـ 4 → نتائج 2021\n"
         "• أو أرسل الاسم للبحث في جميع الملفات\n\n"
         "مثال:\n"
         "512345 (ستظهر نتيجة الطالب للعام 2025)\n"
-        " (للثلاث الاعوام)"
+        " ( وهكذا)"
     )
+    await update.message.reply_text(msg)
+
+async def howm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض عدد المستخدمين الذين دخلوا البوت"""
+    total_users = len(user_ids)
+    msg = f"👥 عدد المستخدمين الذين دخلوا البوت: {total_users}"
     await update.message.reply_text(msg)
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        # إضافة المستخدم إلى قاعدة البيانات
+        user_id = update.effective_user.id
+        user_ids.add(user_id)
+        
         text = (update.message.text or "").strip()
         if not text:
             await update.message.reply_text("أرسل رقم الجلوس أو الاسم.")
@@ -160,7 +185,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if q.isdigit():
             year = get_year_from_number(q)
             if not year or year not in dataframes:
-                await update.message.reply_text(f"❌ رقم الجلوس {q} لا يتبع لأي من الأعوام المتاحة (يجب أن يبدأ بـ 3 أو 8 أو 5)")
+                await update.message.reply_text(f"❌ رقم الجلوس {q}  رقم الجلوس غير صحيح")
                 return
             
             df = dataframes[year]
@@ -219,6 +244,7 @@ def main():
         log.info("🚀 بدء تشغيل البوت...")
         app = Application.builder().token(TOKEN).build()
         app.add_handler(CommandHandler("start", start))
+        app.add_handler(CommandHandler("howm", howm))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
         log.info("✅ البوت جاهز وسيبدأ بوضع Polling")
@@ -230,3 +256,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
