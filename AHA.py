@@ -4,7 +4,7 @@ import pandas as pd
 from typing import Optional
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-const port = process.env.PORT || 4000 
+
 # ============ إعداد اللوج ============
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -22,7 +22,7 @@ user_ids = set()  # مجموعة لحفظ معرفات المستخدمين ال
 
 # ============ تحميل ملفات الإكسل ============
 EXCEL_FILES = {
-    "2021": "results_2021.xlsx",
+     "2021": "results_2021.xlsx",
     "2022": "results_2022.xlsx",
     "2023": "results_2023.xlsx",
     "2024": "results_2024.xlsx", 
@@ -34,10 +34,14 @@ dataframes = {}
 for year, filename in EXCEL_FILES.items():
     try:
         if os.path.exists(filename):
-            dataframes[year] = pd.read_excel(filename)
+            # استخدام محرك 'pyxlsb' لقراءة ملفات .xlsb
+            dataframes[year] = pd.read_excel(filename, engine='pyxlsb')
             log.info(f"تم تحميل ملف {year}: {filename} ({len(dataframes[year])} صف)")
         else:
             log.warning(f"الملف {filename} غير موجود")
+    except ImportError:
+        log.error("❌ لم يتم تثبيت مكتبة pyxlsb. الرجاء تثبيتها: pip install pyxlsb")
+        raise
     except Exception as e:
         log.error(f"خطأ في تحميل ملف {filename}: {e}")
 
@@ -46,7 +50,7 @@ if not dataframes:
 
 log.info(f"تم تحميل {len(dataframes)} ملف نتائج")
 
-def get_year_from_number(number: str) -> str:
+def get_year_from_number(number: str) -> Optional[str]:
     """تحديد السنة من أول رقم في رقم الجلوس"""
     first_digit = number[0] if number else ""
     if first_digit == "5":
@@ -59,8 +63,7 @@ def get_year_from_number(number: str) -> str:
         return "2022"
     elif first_digit == "4":
         return "2021"
-    else:
-        return None
+    return None
 
 def find_col(df, candidates):
     """البحث عن عمود من قائمة مرشحين"""
@@ -73,34 +76,37 @@ def find_col(df, candidates):
 def get_columns_for_df(df):
     """الحصول على أعمدة الرقم والاسم لملف معين"""
     NUMBER_COL_CANDIDATES = ["Number", "number", "رقم_الجلوس", "رقم", "roll", "seat", "id", "ID"]
-    NAME_COL_CANDIDATES   = ["الاسم", "اسم", "name", "Name", "الطالب"]
-    
+    NAME_COL_CANDIDATES = ["الاسم", "اسم", "name", "Name", "الطالب"]
+
     number_col = find_col(df, NUMBER_COL_CANDIDATES)
     name_col = find_col(df, NAME_COL_CANDIDATES)
     
-    if not number_col:
+    # تحسين اختيار العمود الافتراضي
+    if not number_col and len(df.columns) > 0:
         number_col = df.columns[0]
     
-    if not name_col:
+    if not name_col and len(df.columns) > 1:
+        # البحث عن عمود نصي بعد العمود الأول
         for col in df.columns[1:]:
             if df[col].dtype == 'object':
                 name_col = col
                 break
         if not name_col:
-            name_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]
+            name_col = df.columns[1]
     
     return number_col, name_col
 
 # تنظيف أرقام الجلوس في جميع الملفات
 for year, df in dataframes.items():
     number_col, _ = get_columns_for_df(df)
-    df[number_col] = df[number_col].astype(str).str.strip()
+    if number_col:
+        df[number_col] = df[number_col].astype(str).str.strip()
     dataframes[year] = df
 
 def normalize_digits(s: str) -> str:
     """تحويل الأرقام العربية/الهندية إلى 0-9 الإنجليزية"""
     if not isinstance(s, str):
-        return s
+        return str(s)
     trans = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
     return s.translate(trans).strip()
 
@@ -121,10 +127,7 @@ def format_row(row: pd.Series, df, year: str) -> str:
                 val = "-"
             # علامة نجاح/رسوب للمواد الرقمية
             if isinstance(val, (int, float)) and not pd.isna(val):
-                if val >= 50:
-                    status = "✅"
-                else:
-                    status = "❌"
+                status = "✅" if val >= 50 else "❌"
                 parts.append(f"{col}: {val} {status}")
             else:
                 parts.append(f"{col}: {val}")
@@ -133,7 +136,6 @@ def format_row(row: pd.Series, df, year: str) -> str:
 
 # ============ الأوامر والرسائل ============
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # إضافة المستخدم إلى قاعدة البيانات
     user_id = update.effective_user.id
     user_ids.add(user_id)
     
@@ -145,8 +147,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     msg = (
         "👋 أهلاً بك في بوت النتائج!\n\n"
-        "📊 اتصميم خالد طربوش:\n" + "\n".join(files_info) + f"\n"
-        f"📈 : {total_count}\n\n"
+        "📊 تصميم خالد طربوش:\n" + "\n".join(files_info) + f"\n"
+        f"📈 إجمالي النتائج: {total_count}\n\n"
         "🔍 كيفية البحث:\n"
         "• الأرقام التي تبدأ بـ 5 → نتائج 2025\n"
         "• الأرقام التي تبدأ بـ 8 → نتائج 2024\n"
@@ -156,7 +158,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• أو أرسل الاسم للبحث في جميع الملفات\n\n"
         "مثال:\n"
         "512345 (ستظهر نتيجة الطالب للعام 2025)\n"
-        " ( وهكذا)"
+        "( وهكذا)"
     )
     await update.message.reply_text(msg)
 
@@ -168,7 +170,6 @@ async def howm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # إضافة المستخدم إلى قاعدة البيانات
         user_id = update.effective_user.id
         user_ids.add(user_id)
         
@@ -180,11 +181,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log.info(f"البحث عن: {text}")
         q = normalize_digits(text)
 
-        # لو كله أرقام → بحث دقيق برقم الجلوس
+        # بحث برقم الجلوس
         if q.isdigit():
             year = get_year_from_number(q)
             if not year or year not in dataframes:
-                await update.message.reply_text(f"❌ رقم الجلوس {q}  رقم الجلوس غير صحيح")
+                await update.message.reply_text(f"❌ رقم الجلوس {q} غير صحيح أو السنة غير مدعومة.")
                 return
             
             df = dataframes[year]
@@ -201,27 +202,25 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             log.info(f"تم العثور على النتيجة للرقم: {q} في ملف {year}")
             return
 
-        # غير ذلك → بحث جزئي بالاسم في جميع الملفات
+        # بحث بالاسم
         all_results = []
         for year, df in dataframes.items():
             try:
                 _, name_col = get_columns_for_df(df)
-                mask = df[name_col].astype(str).str.contains(q, case=False, na=False)
-                result = df[mask]
-                
-                if not result.empty:
-                    for _, row in result.iterrows():
-                        all_results.append((row, df, year))
-                        
+                if name_col:
+                    mask = df[name_col].astype(str).str.contains(q, case=False, na=False)
+                    result = df[mask]
+                    if not result.empty:
+                        for _, row in result.iterrows():
+                            all_results.append((row, df, year))
             except Exception as e:
-                log.error(f"خطأ في البحث في ملف {year}: {e}")
+                log.error(f"خطأ في البحث بالاسم في ملف {year}: {e}")
                 continue
 
         if not all_results:
             await update.message.reply_text(f"❌ لم أجد اسماً يحتوي على: {q}")
             return
 
-        # لو النتائج كثيرة، نرسل أول 3 فقط
         MAX_ROWS = 3
         count = len(all_results)
         if count > MAX_ROWS:
@@ -248,11 +247,9 @@ def main():
 
         log.info("✅ البوت جاهز وسيبدأ بوضع Polling")
         app.run_polling(allowed_updates=Update.ALL_TYPES)
-        
     except Exception as e:
         log.error(f"خطأ في تشغيل البوت: {e}")
         raise
 
 if __name__ == "__main__":
     main()
-
