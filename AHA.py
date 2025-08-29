@@ -4,7 +4,7 @@ import pandas as pd
 from typing import Optional
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-
+const port = process.env.PORT || 4000 
 # ============ إعداد اللوج ============
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
