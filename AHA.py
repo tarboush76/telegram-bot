@@ -28,7 +28,6 @@ EXCEL_FILES = {
     "2024": "results_2024.xlsx", 
     "2025": "results_2025.xlsx"
 }
-
 # التحقق من وجود الملفات وتحميلها
 dataframes = {}
 for year, filename in EXCEL_FILES.items():
