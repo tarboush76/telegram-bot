@@ -22,11 +22,12 @@ user_ids = set()  # مجموعة لحفظ معرفات المستخدمين ال
 
 # ============ تحميل ملفات الإكسل ============
 EXCEL_FILES = {
-     "2021": "results2021.xlsx",
-    "2022": "results2022.xlsx",
-    "2023": "results2023.xlsx",
-    "2024": "results2024.xlsx", 
-    "2025": "results2025.xlsx"
+    "2021": "results_2021.xlsx",
+    "2022": "results_2022.xlsx",
+    "2023": "results_2023.xlsx",
+    "2024": "results_2024.xlsx", 
+    "2025": "results_2025.xlsx"
+}
 }
 
 # التحقق من وجود الملفات وتحميلها
