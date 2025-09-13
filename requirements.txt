@@ -1,8 +1,9 @@
 python-telegram-bot==20.3
 pandas
 openpyxl
-pip install pyxlsb
+reportlab
 pytelegrambotapi
 telegram
 pyxlsb
 pyxlsb
+
