@@ -35,7 +35,7 @@ dataframes = {}
 for year, filename in EXCEL_FILES.items():
     try:
         if os.path.exists(filename):
-              df = pd.read_excel(filename, engine="openpyxl")
+             df = pd.read_excel(filename, engine="openpyxl")
             # تنظيف البيانات
             df = df.dropna(how='all')  # حذف الصفوف الفارغة
             dataframes[year] = df
