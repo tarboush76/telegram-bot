@@ -13,6 +13,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+import json
 
 # ===== اللوج =====
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -21,7 +22,7 @@ log = logging.getLogger("results-bot")
 # ===== التوكن =====
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
-    TOKEN = "7687273144:AAGFx-MtmaPYXE5hRSCtoHWvxYuRMD8TZd0"
+    raise RuntimeError("❌ BOT_TOKEN غير موجود. أضِفه في Secrets")
 
 # ===== تسجيل خط عربي =====
 # تأكد من وجود ملف الخط في نفس مجلد الكود
@@ -58,15 +59,19 @@ for year, filename in EXCEL_FILES.items():
 if not dataframes:
     raise RuntimeError("❌ لم يتم العثور على أي ملف نتائج")
 
-# ===== إحصائيات =====
+# ===== دوال الإحصائيات =====
 STATS_FILE = "stats.json"
 
 def load_stats():
     """تحميل الإحصائيات من ملف JSON"""
     if os.path.exists(STATS_FILE):
-        with open(STATS_FILE, 'r', encoding='utf-8') as f:
-            stats = json.load(f)
-            return set(stats.get('users_set', [])), stats.get('total_queries', 0)
+        try:
+            with open(STATS_FILE, 'r', encoding='utf-8') as f:
+                stats = json.load(f)
+                return set(stats.get('users_set', [])), stats.get('total_queries', 0)
+        except json.JSONDecodeError:
+            log.error(f"❌ خطأ في قراءة ملف JSON. ستبدأ الإحصائيات من الصفر.")
+            return set(), 0
     return set(), 0
 
 def save_stats(users_set, total_queries):
@@ -77,6 +82,7 @@ def save_stats(users_set, total_queries):
     }
     with open(STATS_FILE, 'w', encoding='utf-8') as f:
         json.dump(stats, f)
+
 
 # ===== إحصائيات =====
 users_set, total_queries = load_stats()
@@ -231,7 +237,9 @@ def make_html_report(row: pd.Series, year: str, filename: str) -> str:
 
 # ===== أوامر =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global users_set, total_queries
     users_set.add(update.effective_user.id)
+    save_stats(users_set, total_queries)
     msg = ( "👋 أهلاً بك في بوت نتائج الصف التاسع - محافظة تعز\n\n" "🔍 أرسل رقم الجلوس أو أرسل الاسم للبحث\n\n" "🔧 تصميم وتطوير: خالد طربوش" )
     await update.message.reply_text(msg)
 
@@ -253,13 +261,14 @@ async def process_and_send_results(row: pd.Series, year: str, update: Update):
 
 # ===== معالجة الرسائل =====
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global total_queries
+    global total_queries, users_set
     users_set.add(update.effective_user.id)
     text = (update.message.text or "").strip()
     if not text:
         await update.message.reply_text("❌ أرسل رقم الجلوس أو الاسم.")
         return
     total_queries += 1
+    save_stats(users_set, total_queries)
     await update.message.reply_text("⏳ جارٍ البحث عن النتيجة، يرجى الانتظار...")
 
     if text.isdigit():
