@@ -23,7 +23,7 @@ log = logging.getLogger("results-bot")
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise RuntimeError("❌ BOT_TOKEN غير موجود. أضِفه في Secrets")
-TOKEN = "8272963553:AAG8NBvyvhW5kqvRRh3XVpX8djoWPKd0uiA"
+ 
 # ===== تسجيل خط عربي =====
 # تأكد من وجود ملف الخط في نفس مجلد الكود
 FONT_PATH = "Amiri-Regular.ttf"
