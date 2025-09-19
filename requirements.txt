@@ -3,3 +3,5 @@ pandas
 openpyxl
 pyxlsb
 reportlab
+arabic-reshaper
+python-bidi
